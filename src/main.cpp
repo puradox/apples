@@ -1,144 +1,215 @@
-#include <iostream>
+#include <cstring>
+#include <cmath>
 
-#define GLEW_STATIC
-#include <GL/glew.h>
-#include <GLFW/glfw3.h>
-
-#define GLSL(src) "#version 150 core\n" #src
-
-static void error_callback(int error, const char* description)
-{
-    std::cerr << "ERROR " << error << " - " << description << std::endl;
-}
-
-static void key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
-{
-    if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
-        glfwSetWindowShouldClose(window, GL_TRUE);
-}
+#include "graphics.hpp"
+#include "script.hpp"
+#include "cew.hpp"
+#include "Shader.hpp"
 
 int main()
 {
-    // Set error callback
+    // =================================================================
+    // LUA
+    lua_State* L = lua_open();
+    luaL_openlibs(L);
+    luaL_dofile(L, "scripts/init.lua");
+
+    // Retrieve some data
+    lua_getglobal(L, "position");
+    if (!lua_istable(L, -1))
+        throw std::runtime_error("'vertex' is not a valid table");
+    double x = getindex(L, "x");
+    double y = getindex(L, "y");
+    std::cout << x << std::endl;
+    std::cout << y << std::endl;
+    lua_pop(L, 1);
+
+    // Draw triangle
+    struct vertex {
+        float x, y, z, r, g, b, u ,v;
+    };
+    lua_getglobal(L, "vertices");
+    if (!lua_istable(L, -1))
+        throw std::runtime_error("'vertices' is not a valid table");
+    const int size = getindex(L, "size");
+    vertex vertices[size];
+    for (int i = 0; i < size; i++)
+    {
+        lua_rawgeti(L, 1, i+1);
+        vertices[i].x = getindex(L, "x");
+        vertices[i].y = getindex(L, "y");
+        vertices[i].r = getindex(L, "r");
+        vertices[i].g = getindex(L, "g");
+        vertices[i].b = getindex(L, "b");
+        std::cout << i << ": { x=" << vertices[i].x << ", y=" << vertices[i].y << " }\n";
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+
+    std::cout << L << std::endl;
+    lua_close(L);
+
+    // GLFW - Set callbacks
     glfwSetErrorCallback(error_callback);
 
-    // Init GLFW
+    // GLFW - Initialize
     if (!glfwInit())
+    {
+        std::cerr << "Failed to initialize GLFW" << std::endl;
         return -1;
-
-    // Create a rendering window with OpenGL 3.2 context
+    }
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 2);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
-
     glfwWindowHint(GLFW_RESIZABLE, GL_FALSE);
 
-    // Create the window
-    GLFWwindow* window = glfwCreateWindow(800, 600, "apples", NULL, NULL);
+    // GLFW - Create window
+    GLFWwindow* window = glfwCreateWindow(WIDTH, HEIGHT, "apples", nullptr, nullptr);
     if (!window)
     {
+        std::cerr << "Failed to create GLFW window" << std::endl;
         glfwTerminate();
         return -1;
     }
-
-    // Configure window
     glfwMakeContextCurrent(window);
-
-    // Set key callback
+    glfwSwapInterval(1);
     glfwSetKeyCallback(window, key_callback);
+    glViewport(0, 0, WIDTH, HEIGHT);
 
-    // Init GLEW
+    // GLEW - Initialize
     glewExperimental = GL_TRUE;
     if (glewInit() != GLEW_OK)
     {
-        std::cerr << "Failed to initialize GLEW!" << std::endl;
+        glfwDestroyWindow(window);
+        glfwTerminate();
+        std::cerr << "Failed to initialize GLEW" << std::endl;
         return -1;
     }
 
-    // Create a Vertex Array Object
-    GLuint vao;
-    glGenVertexArrays(1, &vao);         // Generate 1 vertex array
-    glBindVertexArray(vao);             // Bind
-
-    // Create a Vertex Buffer Object and copy the vertex data to it
-    GLuint vbo;
-    glGenBuffers(1, &vbo);              // Generate 1 buffer
-    glBindBuffer(GL_ARRAY_BUFFER, vbo); // Make into active object
-
-    float vertices[] = {
-         0.0f,  0.5f,   // Vertex 1 (X, Y)
-         0.5f, -0.5f,   // Vertex 2 (X, Y)
-        -0.5f, -0.5f    // Vertex 3 (X, Y)
+    // OpenGL - Initialize
+    GLfloat triangle[] = {
+        // Positions         // Colors          // Texture Coords
+         0.5f,  0.5f, 0.0f,  1.0f, 0.0f, 0.0f,  1.0f, 1.0f,  // Top Right
+         0.5f, -0.5f, 0.0f,  0.0f, 1.0f, 0.0f,  1.0f, 0.0f,  // Bottom Right
+        -0.5f, -0.5f, 0.0f,  0.0f, 0.0f, 1.0f,  0.0f, 0.0f,  // Bottom Left
+        -0.5f,  0.5f, 0.0f,  1.0f, 1.0f, 0.0f,  0.0f, 1.0f   // Top Left
+    };
+    GLint indices[] = {
+        0, 1, 3, // First Triangle
+        1, 2, 3  // Second Triangle
     };
 
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    GLuint vao;
+    glGenVertexArrays(1, &vao);
 
-    // Types of OpenGL draws
-    // GL_STATIC_DRAW: The vertex data will be uploaded once and drawn many times (e.g. the world).
-    // GL_DYNAMIC_DRAW: The vertex data will be changed from time to time, but drawn many times more than that.
-    // GL_STREAM_DRAW: The vertex data will change almost every time it's drawn (e.g. user interface).
+    GLuint vbo;
+    glGenBuffers(1, &vbo);
 
-    // Create vertex shader
-    const char* vertexSource = GLSL(
-        in vec2 position;
+    GLuint ebo;
+    glGenBuffers(1, &ebo);
 
-        void main() {
-            gl_Position = vec4(position, 0.0, 1.0);
-        }
-    );
+    glBindVertexArray(vao);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(triangle), triangle, GL_STATIC_DRAW);
 
-    // Compile vertex shader
-    GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-    glShaderSource(vertexShader, 1, &vertexSource, NULL);
-    glCompileShader(vertexShader);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
-    // Create fragment shader
-    const char* fragmentSource = GLSL(
-        out vec4 outColor;
+        // Position attribute
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)0);
+        glEnableVertexAttribArray(0);
+        // Color attribute
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(3 * sizeof(GL_FLOAT)));
+        glEnableVertexAttribArray(1);
+        // Texture Coords attribute
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(GLfloat), (GLvoid*)(6 * sizeof(GL_FLOAT)));
+        glEnableVertexAttribArray(2);
+    glBindVertexArray(0);
 
-        void main() {
-            outColor = vec4(1.0, 1.0, 1.0, 1.0);
-        }
-    );
+    Shader defaultShader("scripts/default.vertex", "scripts/default.fragment");
 
-    // Compile fragment shader
-    GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-    glShaderSource(fragmentShader, 1, &fragmentSource, NULL);
-    glCompileShader(fragmentShader);
+    //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
-    // Combine shaders into a program
-    GLuint shaderProgram = glCreateProgram();
-    glAttachShader(shaderProgram, vertexShader);
-    glAttachShader(shaderProgram, fragmentShader);
-    glBindFragDataLocation(shaderProgram, 0, "outColor");
-    glLinkProgram(shaderProgram);
-    glUseProgram(shaderProgram);
+    GLuint textures[2];
+    glGenTextures(2, textures);
 
-    // Link vertex data and attributes
-    GLint posAttrib = glGetAttribLocation(shaderProgram, "position");
-    glVertexAttribPointer(posAttrib, 2, GL_FLOAT, GL_FALSE, 0, 0);
-    glEnableVertexAttribArray(posAttrib);
+    stbi_set_flip_vertically_on_load(1);
 
-    // Rendering
+    glBindTexture(GL_TEXTURE_2D, textures[0]);
+    {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        int width, height, bpp;
+        unsigned char* image = stbi_load("scripts/container.jpg", &width, &height, &bpp, 3);
+        if (!image)
+            throw std::runtime_error(stbi_failure_reason());
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, image);
+        glGenerateMipmap(GL_TEXTURE_2D);
+        stbi_image_free(image);
+    }
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    glBindTexture(GL_TEXTURE_2D, textures[1]);
+    {
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        int width, height, bpp;
+        unsigned char* image = stbi_load("scripts/awesomeface.png", &width, &height, &bpp, 0);
+        if (!image)
+            throw std::runtime_error(stbi_failure_reason());
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, image);
+        glGenerateMipmap(GL_TEXTURE_2D);
+        stbi_image_free(image);
+    }
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    std::cout << (int)GL_ALPHA << std::endl;
+    std::cout << (int)GL_RGB << std::endl;
+    std::cout << (int)GL_RGBA << std::endl;
+    std::cout << (int)GL_LUMINANCE << std::endl;
+    std::cout << (int)GL_LUMINANCE_ALPHA << std::endl;
+
+    //glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    //glBlendFunc(GL_SRC_COLOR, GL_ONE_MINUS_SRC_COLOR);
+    //glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_COLOR);
+
+    // GLFW - Main loop
     while (!glfwWindowShouldClose(window))
     {
-        // Clear screen
-        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glfwPollEvents();
+
+        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        // Draw a triangle from the 3 vertices
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+        defaultShader.use();
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, textures[0]);
+            glUniform1i(glGetUniformLocation(defaultShader.m_program, "ourTexture1"), 0);
 
-        // Swap buffers and poll window events
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, textures[1]);
+            glUniform1i(glGetUniformLocation(defaultShader.m_program, "ourTexture2"), 1);
+
+            GLfloat time = glfwGetTime();
+            glUniform2f(glGetUniformLocation(defaultShader.m_program, "offset"), sin(time), cos(time));
+
+            glBindVertexArray(vao);
+            glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        Shader::release();
+
         glfwSwapBuffers(window);
-        glfwPollEvents();
     }
 
-    // Cleanup
-    glfwDestroyWindow(window);
+    // OpenGL - Cleanup
+    glDeleteVertexArrays(1, &vao);
+    glDeleteBuffers(1, &vbo);
+    glDeleteBuffers(1, &ebo);
 
-    // Terminate GLFW
+    // GLFW - Cleanup
+    glfwDestroyWindow(window);
     glfwTerminate();
-    return 0;
 }
