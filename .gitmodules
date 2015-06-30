@@ -1,0 +1,6 @@
+[submodule "dep/LuaBridge"]
+	path = dep/LuaBridge
+	url = https://github.com/vinniefalco/LuaBridge
+[submodule "dep/stb"]
+	path = dep/stb
+	url = https://github.com/nothings/stb
