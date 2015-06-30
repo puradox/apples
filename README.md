@@ -14,6 +14,7 @@ apples (placeholder title)
 Simply run
 
     mkdir build
+    cp -r scripts build/
     cd build
     cmake ..
 
