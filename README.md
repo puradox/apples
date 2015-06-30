@@ -1,17 +1,13 @@
 apples (placeholder title)
 ==========================
-###### Watch an OpenGL game come to life!
-
-## Summary
-
-This repository is meant to be my own way of documenting the learning process as I craft together a game in OpenGL. Code is based on the superb tutorial on http://open.gl
+###### An OpenGL game that utilizes **Divvy** (see https://github.com/puradox/divvy)
 
 ## Requirements
 
-1. **CMake**
-2. **OpenGL**
-3. **GLEW**
-4. **GLFW**
+1. **OpenGL**
+2. **CMake** (http://www.cmake.org/)
+3. **GLEW** (http://glew.sourceforge.net/)
+4. **GLFW** (http://www.glfw.org/)
 
 ## Building
 
