@@ -9,6 +9,15 @@ apples (placeholder title)
 3. **GLEW** (http://glew.sourceforge.net/)
 4. **GLFW** (http://www.glfw.org/)
 
+## Downloading
+
+Simply running a clone on this repository will not clone it's dependancies.
+Therefore, running
+
+    git clone --recursive https://github.com/puradox/apples
+
+will clone both this repository and the submodules that we need.
+
 ## Building
 
 Simply run
