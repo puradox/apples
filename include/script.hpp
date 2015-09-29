@@ -1,6 +1,7 @@
 #pragma once
 
 #include <iostream>
+#include <stdexcept>
 #include "lua.hpp"
 
 // View the stack of a lua_State
@@ -51,3 +52,47 @@ inline double getindex(lua_State* L, const char* key)
     return result;
 }
 
+void test()
+{
+    // =================================================================
+    // LUA
+
+    lua_State* L = lua_open();
+    luaL_openlibs(L);
+    luaL_dofile(L, "scripts/init.lua");
+
+    // Retrieve some data
+    lua_getglobal(L, "position");
+    if (!lua_istable(L, -1))
+        throw std::runtime_error("'vertex' is not a valid table");
+    double x = getindex(L, "x");
+    double y = getindex(L, "y");
+    std::cout << x << std::endl;
+    std::cout << y << std::endl;
+    lua_pop(L, 1);
+
+    // Draw triangle
+    struct vertex {
+        float x, y, z, r, g, b, u ,v;
+    };
+    lua_getglobal(L, "vertices");
+    if (!lua_istable(L, -1))
+        throw std::runtime_error("'vertices' is not a valid table");
+    const int size = getindex(L, "size");
+    vertex vertices[size];
+    for (int i = 0; i < size; i++)
+    {
+        lua_rawgeti(L, 1, i+1);
+        vertices[i].x = getindex(L, "x");
+        vertices[i].y = getindex(L, "y");
+        vertices[i].r = getindex(L, "r");
+        vertices[i].g = getindex(L, "g");
+        vertices[i].b = getindex(L, "b");
+        std::cout << i << ": { x=" << vertices[i].x << ", y=" << vertices[i].y << " }\n";
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+
+    std::cout << L << std::endl;
+    lua_close(L);
+}

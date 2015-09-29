@@ -5,8 +5,9 @@ project(apples)
 include_directories(include)
 
 # Include dependencies
-include_directories(dep/LuaBridge/Source)
 include_directories(dep/stb)
+include_directories(dep/LuaBridge/Source)
+include_directories(dep/glm)
 
 # CMake configuration
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -ggdb")
